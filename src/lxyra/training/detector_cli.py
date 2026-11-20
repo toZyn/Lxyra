@@ -190,9 +190,7 @@ def evaluate(args):
         elapsed.append((time.perf_counter() - started) * 1000)
         preds.extend((index, a) for a in doc["elements"])
         gt.extend((index, a) for a in r["annotations"])
-        domain = per_family.setdefault(
-            r["family"], {"predictions": [], "truth": [], "samples": 0}
-        )
+        domain = per_family.setdefault(r["family"], {"predictions": [], "truth": [], "samples": 0})
         domain["predictions"].extend((index, a) for a in doc["elements"])
         domain["truth"].extend((index, a) for a in r["annotations"])
         domain["samples"] += 1

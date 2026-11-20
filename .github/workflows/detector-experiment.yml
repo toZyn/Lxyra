@@ -1,14 +1,6 @@
 name: Detector architecture experiment
 
 on:
-  push:
-    branches: ["testing/coordinate-integrity"]
-    paths:
-      - "src/lxyra/training/compact_model.py"
-      - "src/lxyra/training/detector_cli.py"
-      - "tests/test_compact_model.py"
-      - "scripts/benchmark_architectures.py"
-      - ".github/workflows/detector-experiment.yml"
   workflow_dispatch:
 
 permissions:

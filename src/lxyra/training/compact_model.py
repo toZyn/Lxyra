@@ -49,9 +49,7 @@ class LxyraCompact(nn.Module):
         s8 = self.s8(s4)
         s16 = self.s16(s8)
         s32 = self.s32(s16)
-        p16 = self.p16(s16) + F.interpolate(
-            self.p32(s32), size=s16.shape[-2:], mode="nearest"
-        )
+        p16 = self.p16(s16) + F.interpolate(self.p32(s32), size=s16.shape[-2:], mode="nearest")
         p8 = self.p8(s8) + F.interpolate(p16, size=s8.shape[-2:], mode="nearest")
         p4 = self.p4(s4) + F.interpolate(p8, size=s4.shape[-2:], mode="nearest")
         features = self.mix(p4)
