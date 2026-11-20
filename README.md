@@ -101,6 +101,8 @@ The 69-screen real test set used during development produced the following resul
 | Detector + text reranking | 0.03803 | 0.11998 |
 | Experimental box refinement | 0.03845 | 0.12425 |
 
+New candidate detectors are disabled by default. A separate [promotion policy](docs/promotion-policy.md) allows opt-in classwise improvements only after validation and held-out checks. Baseline text boxes and scores remain unchanged for any unpromoted detector. This protects measured performance but cannot guarantee accuracy on unseen interfaces.
+
 These are small, previously inspected development test sets. Results do not establish state-of-the-art performance, and text localization is not equivalent to reading text. On a broader WebUI sample, the optional refiner showed a regression. See [evaluation methodology](docs/evaluation.md).
 
 ## Development
