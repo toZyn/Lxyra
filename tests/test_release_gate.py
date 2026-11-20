@@ -25,9 +25,7 @@ def report(split, button=0.10, text=0.20):
         "threshold": 0.15,
         "tiled": False,
         "metrics": score(button, text)["metrics"],
-        "by_family": {
-            family: score(button, text) for family in ("android", "web", "webui")
-        },
+        "by_family": {family: score(button, text) for family in ("android", "web", "webui")},
     }
 
 

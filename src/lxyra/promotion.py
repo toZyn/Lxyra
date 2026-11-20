@@ -22,7 +22,9 @@ def sha256_file(path: str | Path) -> str:
     return result.hexdigest()
 
 
-def select_categories(baseline: dict, candidate: dict, required_families=("android", "web", "webui")) -> dict:
+def select_categories(
+    baseline: dict, candidate: dict, required_families=("android", "web", "webui")
+) -> dict:
     """Choose only classes improved across every measured domain.
 
     Selection must use validation data. An independent test remains mandatory.
@@ -98,7 +100,11 @@ def load_policy(path: str | Path, candidate_path: str | Path) -> dict:
     ):
         raise PromotionRejected("Invalid or unvalidated candidate category policy")
     expected = policy.get("candidate_sha256")
-    if not isinstance(expected, str) or len(expected) != 64 or sha256_file(candidate_path) != expected:
+    if (
+        not isinstance(expected, str)
+        or len(expected) != 64
+        or sha256_file(candidate_path) != expected
+    ):
         raise PromotionRejected("Candidate ONNX weights do not match the validated policy")
     return policy
 
@@ -120,11 +126,13 @@ def combine_documents(baseline: dict, candidate: dict, selected_categories: list
         for element in document["elements"]:
             if (element["category"] in selected) != replace_selected:
                 continue
-            elements.append({
-                "category": element["category"],
-                "bbox": list(element["bbox"]),
-                "confidence": element["confidence"],
-            })
+            elements.append(
+                {
+                    "category": element["category"],
+                    "bbox": list(element["bbox"]),
+                    "confidence": element["confidence"],
+                }
+            )
     width, height = baseline["image"]["width"], baseline["image"]["height"]
     merged = make_document(elements, (width, height), baseline["config"]["threshold"])
     merged["config"].update(baseline["config"])

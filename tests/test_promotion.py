@@ -16,7 +16,9 @@ from lxyra.schema import make_document
 def report(split="val", button=0.1, text=0.2):
     def record(b, t):
         return {
-            "metrics": {"ap50_by_category": {**{c: None for c in CATEGORIES}, "button": b, "text": t}},
+            "metrics": {
+                "ap50_by_category": {**{c: None for c in CATEGORIES}, "button": b, "text": t}
+            },
             "samples": 10,
         }
 
@@ -27,9 +29,7 @@ def report(split="val", button=0.1, text=0.2):
         "threshold": 0.15,
         "tiled": False,
         "metrics": record(button, text)["metrics"],
-        "by_family": {
-            key: record(button, text) for key in ("android", "web", "webui")
-        },
+        "by_family": {key: record(button, text) for key in ("android", "web", "webui")},
     }
 
 
@@ -60,7 +60,9 @@ def test_faster_but_worse_model_is_rejected():
 def test_incompatible_evaluations_are_rejected(bad_field):
     baseline = report()
     candidate = report(button=0.3)
-    candidate[bad_field] = {"dataset": "other", "samples": 50, "threshold": 0.9, "tiled": True}[bad_field]
+    candidate[bad_field] = {"dataset": "other", "samples": 50, "threshold": 0.9, "tiled": True}[
+        bad_field
+    ]
     with pytest.raises(PromotionRejected):
         select_categories(baseline, candidate)
 
@@ -113,16 +115,20 @@ def document(elements):
 
 
 def test_unchanged_categories_preserve_exact_boxes_and_scores():
-    baseline = document([
-        ("text", [12, 20, 90, 18], 0.8),
-        ("button", [50, 80, 100, 30], 0.75),
-        ("icon", [35, 170, 24, 24], 0.9),
-    ])
-    candidate = document([
-        ("text", [20, 15, 50, 18], 0.95),
-        ("button", [55, 85, 92, 29], 0.92),
-        ("icon", [30, 160, 50, 50], 0.88),
-    ])
+    baseline = document(
+        [
+            ("text", [12, 20, 90, 18], 0.8),
+            ("button", [50, 80, 100, 30], 0.75),
+            ("icon", [35, 170, 24, 24], 0.9),
+        ]
+    )
+    candidate = document(
+        [
+            ("text", [20, 15, 50, 18], 0.95),
+            ("button", [55, 85, 92, 29], 0.92),
+            ("icon", [30, 160, 50, 50], 0.88),
+        ]
+    )
     output = combine_documents(baseline, candidate, ["button"])
     for category in ("text", "icon"):
         got = [e for e in output["elements"] if e["category"] == category]

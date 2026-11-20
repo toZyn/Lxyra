@@ -26,12 +26,14 @@ def verify_holdout(baseline: dict, candidate: dict, categories: list[str]) -> li
             a = previous["ap50_by_category"].get(category)
             b = current["ap50_by_category"].get(category)
             if a is None or b is None or b + 1e-12 < a:
-                problems.append({
-                    "family": family,
-                    "category": category,
-                    "baseline_ap50": a,
-                    "candidate_ap50": b,
-                })
+                problems.append(
+                    {
+                        "family": family,
+                        "category": category,
+                        "baseline_ap50": a,
+                        "candidate_ap50": b,
+                    }
+                )
     return problems
 
 
@@ -83,11 +85,15 @@ def main():
     policy = make_release_policy(*reports, args.candidate_onnx)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(policy, indent=2, allow_nan=False) + "\n")
-    print(json.dumps({
-        "enabled": policy["enabled"],
-        "candidate_categories": policy["candidate_categories"],
-        "holdout_regressions": policy["holdout_regressions"],
-    }))
+    print(
+        json.dumps(
+            {
+                "enabled": policy["enabled"],
+                "candidate_categories": policy["candidate_categories"],
+                "holdout_regressions": policy["holdout_regressions"],
+            }
+        )
+    )
     if not policy["independent_test_passed"]:
         raise SystemExit("REJECTED: model quality gate failed")
 
