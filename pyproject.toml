@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lxyra"
+version = "0.1.0"
+description = "Portable neural screen parsing and structured interface analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+keywords = ["computer-vision", "screen-parsing", "onnx", "layout-analysis"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+  "numpy>=1.26,<3",
+  "Pillow>=10,<12",
+  "onnxruntime>=1.17,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+  "onnx>=1.16,<2",
+  "build>=1.2,<2",
+]
+train = [
+  "torch>=2.3,<3",
+  "onnx>=1.16,<2",
+]
+
+[project.scripts]
+lxyra = "lxyra.pipeline:main"
+
+[project.urls]
+Repository = "https://github.com/toZyn/Lxyra"
+Issues = "https://github.com/toZyn/Lxyra/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lxyra = ["models/*.onnx", "models/*.json", "models/*.bin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["data", "artifacts", ".venv"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
