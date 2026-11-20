@@ -13,54 +13,127 @@ class ScreenTransform:
     screenshot_size: tuple[int, int]
     display_size: tuple[int, int]
     capture_rect: tuple[int, int, int, int]
+    screenshot_content_rect: tuple[int, int, int, int] | None = None
+    rotation_degrees: int = 0
 
     def __post_init__(self):
         for pair in (self.screenshot_size, self.display_size):
             if len(pair) != 2 or any(type(value) is not int or value <= 0 for value in pair):
                 raise ValueError("Image and display dimensions must be positive integers")
-        rect = self.capture_rect
+        self._validate_rectangle(
+            self.capture_rect,
+            self.display_size,
+            "Capture rectangle lies outside the display",
+        )
+        if self.screenshot_content_rect is not None:
+            self._validate_rectangle(
+                self.screenshot_content_rect,
+                self.screenshot_size,
+                "Content rectangle lies outside the screenshot",
+            )
+        if type(self.rotation_degrees) is not int or self.rotation_degrees not in (0, 90, 180, 270):
+            raise ValueError("Rotation must be 0, 90, 180 or 270 degrees clockwise")
+
+    @staticmethod
+    def _validate_rectangle(rect, bounds, message):
         if len(rect) != 4 or any(type(value) is not int for value in rect):
-            raise ValueError("Capture rectangle must contain four integers")
+            raise ValueError(message)
         left, top, width, height = rect
-        display_width, display_height = self.display_size
         if (
             left < 0
             or top < 0
             or width <= 0
             or height <= 0
-            or left + width > display_width
-            or top + height > display_height
+            or left + width > bounds[0]
+            or top + height > bounds[1]
         ):
-            raise ValueError("Capture rectangle lies outside the display")
+            raise ValueError(message)
 
     @classmethod
-    def full_screen(cls, screenshot_size, display_size):
+    def full_screen(
+        cls, screenshot_size, display_size, screenshot_content_rect=None, rotation_degrees=0
+    ):
         return cls(
             screenshot_size=tuple(screenshot_size),
             display_size=tuple(display_size),
             capture_rect=(0, 0, *display_size),
+            screenshot_content_rect=screenshot_content_rect,
+            rotation_degrees=rotation_degrees,
+        )
+
+    @property
+    def content_rect(self):
+        return self.screenshot_content_rect or (0, 0, *self.screenshot_size)
+
+    def covers_point(self, x, y):
+        if not math.isfinite(x) or not math.isfinite(y):
+            return False
+        left, top, width, height = self.content_rect
+        return left <= x < left + width and top <= y < top + height
+
+    def _to_display(self, x, y):
+        left, top, width, height = self.content_rect
+        u = (x - left) / width
+        v = (y - top) / height
+        if self.rotation_degrees == 90:
+            u, v = v, 1 - u
+        elif self.rotation_degrees == 180:
+            u, v = 1 - u, 1 - v
+        elif self.rotation_degrees == 270:
+            u, v = 1 - v, u
+        display_left, display_top, display_width, display_height = self.capture_rect
+        return (
+            display_left + u * display_width,
+            display_top + v * display_height,
         )
 
     def map_point(self, screenshot_x, screenshot_y):
-        image_width, image_height = self.screenshot_size
-        if (
-            not math.isfinite(screenshot_x)
-            or not math.isfinite(screenshot_y)
-            or not 0 <= screenshot_x < image_width
-            or not 0 <= screenshot_y < image_height
-        ):
-            raise ValueError("Point lies outside the screenshot")
+        if not self.covers_point(screenshot_x, screenshot_y):
+            raise ValueError("Point lies outside the screenshot content")
+        x, y = self._to_display(screenshot_x, screenshot_y)
         left, top, width, height = self.capture_rect
-        x = left + math.floor(screenshot_x * width / image_width)
-        y = top + math.floor(screenshot_y * height / image_height)
-        return (min(left + width - 1, x), min(top + height - 1, y))
+        return (
+            min(left + width - 1, max(left, math.floor(x))),
+            min(top + height - 1, max(top, math.floor(y))),
+        )
+
+    def map_bbox(self, bbox):
+        if len(bbox) != 4 or not all(math.isfinite(value) for value in bbox):
+            raise ValueError("Invalid screenshot bounding box")
+        x, y, width, height = bbox
+        if width <= 0 or height <= 0:
+            raise ValueError("Bounding box dimensions must be positive")
+        left, top, cw, ch = self.content_rect
+        x0 = max(x, left)
+        y0 = max(y, top)
+        x1 = min(x + width, left + cw)
+        y1 = min(y + height, top + ch)
+        if x1 <= x0 or y1 <= y0:
+            return None
+        points = [self._to_display(px, py) for px in (x0, x1) for py in (y0, y1)]
+        display_left, display_top, display_width, display_height = self.capture_rect
+        bx0 = min(
+            display_left + display_width, max(display_left, math.floor(min(p[0] for p in points)))
+        )
+        by0 = min(
+            display_top + display_height, max(display_top, math.floor(min(p[1] for p in points)))
+        )
+        bx1 = min(
+            display_left + display_width, max(display_left, math.ceil(max(p[0] for p in points)))
+        )
+        by1 = min(
+            display_top + display_height, max(display_top, math.ceil(max(p[1] for p in points)))
+        )
+        return [bx0, by0, bx1 - bx0, by1 - by0] if bx1 > bx0 and by1 > by0 else None
 
     def as_dict(self):
         return {
             "screenshot_size": list(self.screenshot_size),
             "display_size": list(self.display_size),
             "capture_rect_on_display": list(self.capture_rect),
-            "mapping": "explicit_crop_or_full_frame_scale",
+            "content_rect_on_screenshot": list(self.content_rect),
+            "rotation_degrees_clockwise": self.rotation_degrees,
+            "mapping": "explicit_cropped_scaled_and_rotated_capture",
         }
 
 
@@ -112,6 +185,16 @@ def agent_targets(document, geometry=None, minimum_confidence=0.25, frame_sha256
             for other in nodes
             if other["id"] != node["id"] and _inside(center, other["bbox"])
         ]
+        mapped_point = None
+        mapped_box = None
+        mapping_status = "uncalibrated"
+        if geometry is not None:
+            mapped_box = geometry.map_bbox(node["bbox"])
+            if geometry.covers_point(*image_point):
+                mapped_point = list(geometry.map_point(*image_point))
+                mapping_status = "mapped"
+            else:
+                mapping_status = "outside_content_rect"
         result.append(
             {
                 "id": node["id"],
@@ -119,7 +202,9 @@ def agent_targets(document, geometry=None, minimum_confidence=0.25, frame_sha256
                 "confidence": node["confidence"],
                 "bbox_on_screenshot": list(node["bbox"]),
                 "point_on_screenshot": image_point,
-                "point_on_display": list(geometry.map_point(*image_point)) if geometry else None,
+                "point_on_display": mapped_point,
+                "bbox_on_display": mapped_box,
+                "mapping_status": mapping_status,
                 "overlapping_candidate_ids": overlaps,
                 "ambiguous": bool(overlaps),
                 "interactive_verified": False,

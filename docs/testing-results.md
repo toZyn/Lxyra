@@ -4,7 +4,7 @@ Date: 2026-11-20. The tests were run on CPU with the existing frozen ONNX model 
 
 ## Automated checks
 
-- 54 local unit and integration tests passed, including crop offsets, letterbox inversion, aspect-ratio changes, pixel-space remapping, EXIF orientation, overlap reporting, frame fingerprints and model output validation.
+- 65 local unit and integration tests passed, including crop offsets, letterbox inversion, aspect-ratio changes, pixel-space remapping, EXIF orientation, explicit image padding and rotated capture mapping, overlap reporting, frame fingerprints and model output validation.
 - Ruff lint and formatting checks passed.
 - Packaged ONNX models, external tensor data and SHA-256 checksums passed verification with CPU inference.
 - Source and wheel distributions built successfully, including the new coordinate-mapping module.

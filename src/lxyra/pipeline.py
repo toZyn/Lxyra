@@ -157,6 +157,8 @@ def main(argv=None):
     region.add_argument("--capture-rect", type=_parse_rectangle)
     region.add_argument("--full-display-capture", action="store_true")
     parser.add_argument("--agent-confidence", type=float, default=0.25)
+    parser.add_argument("--screenshot-content-rect", type=_parse_rectangle)
+    parser.add_argument("--capture-rotation", type=int, choices=(0, 90, 180, 270), default=0)
     arguments = parser.parse_args(argv)
 
     if not 0 <= arguments.threshold <= 1:
@@ -167,6 +169,10 @@ def main(argv=None):
             parser.error("Display mapping requires --display-size and --agent-output")
     if arguments.display_size and not (arguments.capture_rect or arguments.full_display_capture):
         parser.error("Declare --capture-rect or --full-display-capture explicitly")
+    if (
+        arguments.screenshot_content_rect is not None or arguments.capture_rotation
+    ) and not arguments.display_size:
+        parser.error("Content rectangle and rotation require explicit display mapping")
     if arguments.agent_output is None and arguments.agent_confidence != 0.25:
         parser.error("--agent-confidence requires --agent-output")
 
@@ -194,10 +200,19 @@ def main(argv=None):
         geometry = None
         if arguments.display_size:
             if arguments.full_display_capture:
-                geometry = ScreenTransform.full_screen(image.size, arguments.display_size)
+                geometry = ScreenTransform.full_screen(
+                    image.size,
+                    arguments.display_size,
+                    screenshot_content_rect=arguments.screenshot_content_rect,
+                    rotation_degrees=arguments.capture_rotation,
+                )
             else:
                 geometry = ScreenTransform(
-                    image.size, arguments.display_size, arguments.capture_rect
+                    image.size,
+                    arguments.display_size,
+                    arguments.capture_rect,
+                    screenshot_content_rect=arguments.screenshot_content_rect,
+                    rotation_degrees=arguments.capture_rotation,
                 )
         agent_document = agent_targets(
             document,

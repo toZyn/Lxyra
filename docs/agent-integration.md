@@ -28,7 +28,21 @@ When an image is a crop or resized crop of the display:
 lxyra cropped.png --agent-output targets.json --display-size 1080x2400 --capture-rect 100,200,800,1200
 ```
 
-`--capture-rect` is `LEFT,TOP,WIDTH,HEIGHT` in the display coordinate units used by the action driver, not the screenshot. These arguments are explicit assertions by the caller. An image with unknown crop offset cannot be mapped to accurate display coordinates.
+`--capture-rect` is `LEFT,TOP,WIDTH,HEIGHT` in the display coordinate units used by the action driver, not the screenshot.
+
+If the model input has padding (for example, a 252×448 capture centered in a 448×448 canvas), specify the content rectangle **in screenshot pixel coordinates**:
+
+```bash
+lxyra padded.png --agent-output targets.json --display-size 1080x1920 --full-display-capture --screenshot-content-rect 98,0,252,448
+```
+
+If the screenshot image was deliberately rotated clockwise relative to the captured display area, specify the screenshot rotation explicitly. Lxyra will invert it when computing display coordinates:
+
+```bash
+lxyra rotated.png --agent-output targets.json --display-size 1080x1920 --full-display-capture --capture-rotation 90
+```
+
+Supported rotation values are 0, 90, 180 and 270 degrees clockwise. The rotation applies to the source display rectangle to produce the screenshot, and is inverted to map screenshot points back to the display. This is **not** an automatic orientation detector. EXIF image orientation is normalized before parsing, so provide only the remaining actual difference in orientation between the final normalized pixels and the display. These arguments are explicit assertions by the caller. An image with unknown crop offset cannot be mapped to accurate display coordinates.
 
 ## Mapping
 
@@ -39,7 +53,7 @@ display_x = L + floor(x * CW / W)
 display_y = T + floor(y * CH / H)
 ```
 
-Both coordinates must lie within the explicit capture rectangle. Inputs outside the screenshot, invalid rectangles and geometry that disagrees with the parsed document are rejected, never guessed.
+Both coordinates must lie within the explicit capture rectangle. If `--screenshot-content-rect` is provided, normalization first removes padding according to that rectangle. If a rotation is declared, the normalized coordinates are inverse-rotated before applying the display crop. Targets outside the actual image-content rectangle have `point_on_display: null` and `mapping_status: outside_content_rect` rather than invented device coordinates. Inputs outside the screenshot, invalid rectangles and geometry that disagrees with the parsed document are rejected, never guessed.
 
 Examples:
 
@@ -53,7 +67,7 @@ If an agent acts in logical coordinates, use **the logical display coordinate sy
 
 ## Target candidates
 
-The separate targets document reports candidate IDs, categories, detector confidence, screenshot bounding boxes, estimated centers, optional display points and overlapping candidate IDs. An icon may be decorative; a button-like shape may be an image. Every target has `interactive_verified: false`, even if its location is mapped precisely.
+The separate targets document reports candidate IDs, categories, detector confidence, screenshot bounding boxes, estimated centers, optional display points, mapped display bounding boxes, coordinate mapping status and overlapping candidate IDs. An icon may be decorative; a button-like shape may be an image. Every target has `interactive_verified: false`, even if its location is mapped precisely.
 
 Element IDs are **frame-scoped**, not persistent IDs. The `frame_sha256` fingerprint binds the coordinates to a particular RGB screenshot. After any action, scroll, rotation or layout change, capture and analyze the updated screen again; compare the frame digest and avoid reusing stale coordinates.
 

@@ -82,3 +82,39 @@ def test_cli_normalizes_exif_orientation_before_mapping(tmp_path):
     assert process.returncode == 0, process.stderr
     data = json.loads(output.read_text())
     assert data["screenshot"] == {"width": 320, "height": 180}
+
+
+def test_cli_handles_rotated_and_padded_capture(tmp_path):
+    screenshot = tmp_path / "rotated-with-padding.png"
+    target = tmp_path / "coordinates.json"
+    Image.new("RGB", (448, 448), "white").save(screenshot)
+    process = run(
+        screenshot,
+        "--agent-output",
+        target,
+        "--display-size",
+        "1080x2400",
+        "--full-display-capture",
+        "--screenshot-content-rect",
+        "98,0,252,448",
+        "--capture-rotation",
+        "90",
+    )
+    assert process.returncode == 0, process.stderr
+    document = json.loads(target.read_text())
+    assert document["display_mapping"]["rotation_degrees_clockwise"] == 90
+    assert document["display_mapping"]["content_rect_on_screenshot"] == [98, 0, 252, 448]
+
+
+def test_cli_rejects_content_rectangle_without_display_mapping(tmp_path):
+    screenshot = tmp_path / "screen.png"
+    Image.new("RGB", (320, 600), "white").save(screenshot)
+    process = run(
+        screenshot,
+        "--agent-output",
+        tmp_path / "targets.json",
+        "--screenshot-content-rect",
+        "0,0,300,500",
+    )
+    assert process.returncode != 0
+    assert "require explicit display mapping" in process.stderr

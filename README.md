@@ -42,6 +42,7 @@ For integration with an agent that needs coordinates in its screen-control API:
 lxyra screenshot.png --agent-output targets.json
 lxyra resized-full-screen.png --agent-output targets.json --display-size 1080x2400 --full-display-capture
 lxyra cropped.png --agent-output targets.json --display-size 1080x2400 --capture-rect 100,200,800,1200
+lxyra padded.png --agent-output targets.json --display-size 1080x2400 --full-display-capture --screenshot-content-rect 98,0,252,448
 ```
 
 The agent output always identifies estimated targets, never verified clickable controls. If screen size and crop placement are unknown, device coordinates remain unavailable. See [agent integration](docs/agent-integration.md).
