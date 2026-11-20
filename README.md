@@ -24,7 +24,7 @@ The package includes its ONNX models, standards-compliant external tensor data a
 lxyra screenshot.png --output results.json --overlay results.png
 ```
 
-For long or narrow screenshots, overlapping crops can preserve more detail:
+For long or narrow screenshots, overlapping crops can preserve more detail, but current benchmarks show domain-specific accuracy regressions with this mode:
 
 ```bash
 lxyra screenshot.png --tile --output results.json
@@ -35,6 +35,16 @@ The experimental bounding-box refiner is disabled by default because it regresse
 ```bash
 lxyra screenshot.png --refine-text --output refined.json
 ```
+
+For integration with an agent that needs coordinates in its screen-control API:
+
+```bash
+lxyra screenshot.png --agent-output targets.json
+lxyra resized-full-screen.png --agent-output targets.json --display-size 1080x2400 --full-display-capture
+lxyra cropped.png --agent-output targets.json --display-size 1080x2400 --capture-rect 100,200,800,1200
+```
+
+The agent output always identifies estimated targets, never verified clickable controls. If screen size and crop placement are unknown, device coordinates remain unavailable. See [agent integration](docs/agent-integration.md).
 
 The Python API reuses loaded inference sessions across screenshots:
 
@@ -109,7 +119,7 @@ Training needs optional dependencies and source datasets:
 pip install -e ".[train,dev]"
 ```
 
-See [architecture](docs/architecture.md), [dataset and training notes](docs/datasets.md), [evaluation](docs/evaluation.md), and [contributing](CONTRIBUTING.md) for details.
+See [agent coordinate mapping](docs/agent-integration.md), [architecture](docs/architecture.md), [dataset and training notes](docs/datasets.md), [evaluation](docs/evaluation.md), [testing results](docs/testing-results.md), and [contributing](CONTRIBUTING.md) for details.
 
 ## License
 

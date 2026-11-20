@@ -80,3 +80,14 @@ def test_inference_import_does_not_load_training_runtime():
 def test_packaged_models_exist():
     for item in ("detector.onnx", "text.onnx", "refiner.onnx", "rerank.json", "refine.json"):
         assert (MODEL_DIRECTORY / item).is_file()
+
+
+def test_tiled_model_output_stays_in_full_frame_coordinates(parser):
+    screenshot = Image.new("RGB", (360, 1280), "#dedede")
+    document = parser.predict(screenshot, threshold=0.25, tiled=True)
+    validate_document(document)
+    for node in document["elements"]:
+        x, y, width, height = node["bbox"]
+        assert 0 <= x and 0 <= y
+        assert x + width <= screenshot.width + 0.01
+        assert y + height <= screenshot.height + 0.01

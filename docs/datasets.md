@@ -42,3 +42,17 @@ Training relies on PyTorch and is intentionally not part of the inference instal
 ## Data integrity
 
 Keep datasets, downloaded images, checkpoints and local reports outside Git. Avoid mixing repeated screenshots or images from one app/domain between training and test splits. Reserve an independent benchmark for quality claims. Do not upload user screenshots, private application screens or access credentials.
+
+## Annotation audit
+
+To audit the available annotation files before training, run:
+
+```bash
+python scripts/audit_annotations.py --data-root /path/to/annotated-data --output audit.json
+```
+
+This checks screenshot dimensions, invalid and duplicate bounding boxes, group leakage, oversized interactive controls and unusually wide text regions. All suspicious labels are **flagged for review**; no annotation is silently deleted.
+
+In a local audit of 1,781 mixed training/validation/test screenshots, 1,297 text regions covered at least 75% of the image width (including 469 in WebUI), 12 annotation boxes were exact duplicates, and four actionable boxes covered more than 30% of the screen. Group leakage was not detected. These are geometric heuristics, not independently verified annotation errors. Some text-row datasets intentionally use full-width line regions, which is unsuitable as direct ground truth for precise individual word boxes.
+
+To improve text localization, new labels must distinguish text lines, individual words and whole text containers. A single broad text box cannot provide precise word-level supervision regardless of the number of training epochs.

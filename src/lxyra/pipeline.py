@@ -4,11 +4,12 @@ import sys
 from pathlib import Path
 
 import onnxruntime as ort
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .coordinates import change_box, make_crop
 from .reranking import infer_v4, load_policy
 from .schema import draw_overlay, validate_document
+from .screen_coordinates import ScreenTransform, agent_targets, fingerprint
 
 import math
 
@@ -100,7 +101,7 @@ class ScreenParser:
     def predict(self, image, threshold=0.15, tiled=False):
         if not isinstance(image, Image.Image):
             raise TypeError("predict expects a PIL Image")
-        image = image.convert("RGB")
+        image = ImageOps.exif_transpose(image).convert("RGB")
         document = infer_v4(
             image,
             self.detector,
@@ -115,6 +116,29 @@ class ScreenParser:
         return _refine(image, document, self.refiner, self.refinement)
 
 
+def _parse_dimensions(value):
+    try:
+        parts = value.lower().split("x")
+        if len(parts) != 2:
+            raise ValueError
+        width, height = (int(part) for part in parts)
+        if width <= 0 or height <= 0:
+            raise ValueError
+        return (width, height)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("Use WIDTHxHEIGHT with positive integers") from error
+
+
+def _parse_rectangle(value):
+    try:
+        parts = value.split(",")
+        if len(parts) != 4:
+            raise ValueError
+        return tuple(int(part) for part in parts)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("Use LEFT,TOP,WIDTH,HEIGHT in display pixels") from error
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="lxyra",
@@ -127,13 +151,27 @@ def main(argv=None):
     parser.add_argument("--threshold", type=float, default=0.15)
     parser.add_argument("--tile", action="store_true")
     parser.add_argument("--refine-text", action="store_true")
+    parser.add_argument("--agent-output", type=Path)
+    parser.add_argument("--display-size", type=_parse_dimensions)
+    region = parser.add_mutually_exclusive_group()
+    region.add_argument("--capture-rect", type=_parse_rectangle)
+    region.add_argument("--full-display-capture", action="store_true")
+    parser.add_argument("--agent-confidence", type=float, default=0.25)
     arguments = parser.parse_args(argv)
 
     if not 0 <= arguments.threshold <= 1:
         parser.error("--threshold must be between 0 and 1")
 
+    if arguments.capture_rect or arguments.full_display_capture:
+        if not arguments.display_size or not arguments.agent_output:
+            parser.error("Display mapping requires --display-size and --agent-output")
+    if arguments.display_size and not (arguments.capture_rect or arguments.full_display_capture):
+        parser.error("Declare --capture-rect or --full-display-capture explicitly")
+    if arguments.agent_output is None and arguments.agent_confidence != 0.25:
+        parser.error("--agent-confidence requires --agent-output")
+
     with Image.open(arguments.image) as screenshot:
-        image = screenshot.convert("RGB")
+        image = ImageOps.exif_transpose(screenshot).convert("RGB")
 
     engine = ScreenParser(
         model_directory=arguments.model_directory,
@@ -151,6 +189,27 @@ def main(argv=None):
     if arguments.overlay:
         arguments.overlay.parent.mkdir(parents=True, exist_ok=True)
         draw_overlay(image, document).save(arguments.overlay)
+
+    if arguments.agent_output:
+        geometry = None
+        if arguments.display_size:
+            if arguments.full_display_capture:
+                geometry = ScreenTransform.full_screen(image.size, arguments.display_size)
+            else:
+                geometry = ScreenTransform(
+                    image.size, arguments.display_size, arguments.capture_rect
+                )
+        agent_document = agent_targets(
+            document,
+            geometry,
+            arguments.agent_confidence,
+            frame_sha256=fingerprint(image),
+        )
+        arguments.agent_output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.agent_output.write_text(
+            json.dumps(agent_document, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

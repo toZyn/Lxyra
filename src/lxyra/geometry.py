@@ -6,17 +6,24 @@ from .schema import iou
 STRIDE = 4
 
 
-def decode(outputs, image_size, transform, threshold=0.3, top_k=200):
+def decode(outputs, image_size, transform, threshold=0.3, top_k=200, nonwrapping_peaks=False):
     logits, wh, offsets = outputs
     if hasattr(logits, "detach"):
         logits, wh, offsets = (x.detach().cpu().numpy() for x in (logits, wh, offsets))
     logits, wh, offsets = [a[0] if a.ndim == 4 else a for a in (logits, wh, offsets)]
     probs = 1 / (1 + np.exp(-np.clip(logits, -30, 30)))
     local = np.ones_like(probs, dtype=bool)
+    if nonwrapping_peaks:
+        height, width = probs.shape[-2:]
+        padded = np.pad(probs, ((0, 0), (1, 1), (1, 1)), constant_values=-1)
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
             if dx or dy:
-                local &= probs >= np.roll(np.roll(probs, dy, 1), dx, 2)
+                if nonwrapping_peaks:
+                    neighbor = padded[:, 1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width]
+                else:
+                    neighbor = np.roll(np.roll(probs, dy, 1), dx, 2)
+                local &= probs >= neighbor
     probs = probs * local
     flat = probs.ravel()
     count = min(top_k, flat.size)

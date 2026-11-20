@@ -51,6 +51,7 @@ lxyra = ["models/*.onnx", "models/*.json", "models/*.bin"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra"
 
 [tool.ruff]

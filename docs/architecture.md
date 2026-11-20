@@ -15,6 +15,10 @@ The public output is JSON schema version 1.0. Each element has a stable identifi
 
 All models are shipped as ONNX with standard operators. The component detector uses the ONNX external-data specification to store tensor weights in adjacent binary shards; no custom runtime or reconstruction is needed. ONNX Runtime CPU is the default execution backend. The training code is separated from the importable inference package and uses PyTorch only in `lxyra.training`.
 
+## Screen-control agent integration
+
+The separate agent-targets output uses frame-local IDs, optional full-display coordinate transforms and a screenshot content fingerprint. The mapping requires declared crop geometry or an explicit full-display capture assertion. Target centers are estimates, not verified clickable positions. See [agent integration](agent-integration.md) for the coordinate contract and validation tests.
+
 ## Limitations
 
 The detector does not recover inaccessible or hidden elements, understand behaviors, read text strings or reliably infer control semantics. The text stage localizes regions rather than producing word-level transcription or polygons. The current evaluation does not justify use as an autonomous GUI interaction engine.

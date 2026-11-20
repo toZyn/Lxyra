@@ -3,6 +3,7 @@ name: Training smoke test
 on:
   workflow_dispatch:
   push:
+    branches: [main, "testing/**"]
     paths:
       - "src/lxyra/training/**"
       - "tests/test_training.py"
