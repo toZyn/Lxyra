@@ -1,0 +1,91 @@
+name: Detector architecture experiment
+
+on:
+  push:
+    branches: ["testing/coordinate-integrity"]
+    paths:
+      - "src/lxyra/training/compact_model.py"
+      - "src/lxyra/training/detector_cli.py"
+      - "tests/test_compact_model.py"
+      - "scripts/benchmark_architectures.py"
+      - ".github/workflows/detector-experiment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train-and-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[train,dev]"
+      - name: Verify architecture and gradient tests
+        run: python -m pytest -q tests/test_compact_model.py
+      - name: Build publicly licensed cross-platform dataset subset
+        run: |
+          python -m lxyra.training.hf_builder --root data/experiment --rico-pages 4 --web-pages 6 --design-pages 3 --page-size 24
+          python - <<'PY'
+          import json
+          from collections import Counter
+          data = [json.loads(line) for line in open("data/experiment/manifest.jsonl")]
+          counts = Counter((row["family"], row["split"]) for row in data)
+          print("DATASET", dict((str(key), value) for key, value in counts.items()), flush=True)
+          if len(data) < 80:
+              raise RuntimeError("Insufficient downloaded real screenshots")
+          if not any(row["split"] == "val" for row in data):
+              raise RuntimeError("Validation data is missing")
+          if not any(row["family"] == "android" for row in data):
+              raise RuntimeError("Android screenshots are missing")
+          if not any(row["family"] == "web" for row in data):
+              raise RuntimeError("Web screenshots are missing")
+          PY
+      - name: Measure CPU runtime with randomly initialized models
+        run: python scripts/benchmark_architectures.py --resolution 448 --threads 2 --output experiment/architecture_cpu.json
+      - name: Train original model from scratch
+        run: python -m lxyra.training.detector_cli train --architecture v2 --data data/experiment --out experiment/v2 --epochs 3 --batch 4 --threads 2 --seed 2026
+      - name: Train compact model from scratch
+        run: python -m lxyra.training.detector_cli train --architecture compact --data data/experiment --out experiment/compact --epochs 3 --batch 4 --threads 2 --seed 2026
+      - name: Evaluate original model on held-out validation
+        run: python -m lxyra.training.detector_cli evaluate --data data/experiment --split val --checkpoint experiment/v2/best.pt --out experiment/v2_metrics.json --threads 2 --overlays 0
+      - name: Evaluate compact model on the same held-out validation
+        run: python -m lxyra.training.detector_cli evaluate --data data/experiment --split val --checkpoint experiment/compact/best.pt --out experiment/compact_metrics.json --threads 2 --overlays 0
+      - name: Export and verify trained ONNX models
+        run: |
+          python -m lxyra.training.detector_cli export --checkpoint experiment/v2/best.pt --out experiment/v2.onnx
+          python -m lxyra.training.detector_cli export --checkpoint experiment/compact/best.pt --out experiment/compact.onnx
+          python - <<'PY'
+          import json
+          for name in ("v2", "compact"):
+              with open("experiment/" + name + ".verification.json") as stream:
+                  result = json.load(stream)
+              if not result["passed"]:
+                  raise RuntimeError("ONNX numerical parity failed for " + name)
+          print("BOTH_ONNX_VERIFIED", flush=True)
+          PY
+      - name: Publish reproducible experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lxyra-detector-experiment
+          path: |
+            experiment/**/*.json
+            experiment/**/*.jsonl
+            experiment/**/*.pt
+            experiment/*.json
+            experiment/*.onnx
+            data/experiment/builder_report.json
+          if-no-files-found: warn
+          retention-days: 14

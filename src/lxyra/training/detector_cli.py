@@ -17,6 +17,7 @@ from ..schema import make_document, draw_overlay
 from ..preprocess import letterbox
 from .metrics import detection_metrics
 from .detector_model import LxyraV2, SIZE, V2Dataset, loss
+from .compact_model import LxyraCompact
 from ..geometry import decode, nms, windows
 
 
@@ -40,6 +41,14 @@ def infer(net, image, threshold=0.2, tiled=False, is_onnx=False):
     return make_document(nms(candidates), image.size, threshold)
 
 
+def create_model(architecture):
+    if architecture == "v2":
+        return LxyraV2()
+    if architecture == "compact":
+        return LxyraCompact()
+    raise ValueError(f"Unknown detector architecture: {architecture}")
+
+
 def load_model(checkpoint):
     d = torch.load(checkpoint, map_location="cpu", weights_only=True)
     if (
@@ -48,7 +57,7 @@ def load_model(checkpoint):
         or d.get("input_size") != SIZE
     ):
         raise ValueError("Incompatible Lxyra v2 checkpoint")
-    net = LxyraV2()
+    net = create_model(d.get("architecture", "v2"))
     net.load_state_dict(d["model"])
     net.eval()
     return net, d
@@ -70,7 +79,7 @@ def train(args):
     validation = V2Dataset(args.data, "val")
     train_loader = DataLoader(training, batch_size=args.batch, shuffle=True, num_workers=0)
     val_loader = DataLoader(validation, batch_size=args.batch, shuffle=False, num_workers=0)
-    net = LxyraV2()
+    net = create_model(args.architecture)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=0.0005)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=args.epochs, eta_min=args.lr * 0.05
@@ -82,6 +91,8 @@ def train(args):
     start = 0
     if args.resume:
         d = torch.load(args.resume, map_location="cpu", weights_only=True)
+        if d.get("architecture", "v2") != args.architecture:
+            raise ValueError("Cannot resume checkpoint with a different architecture")
         net.load_state_dict(d["model"])
         start = int(d["epoch"])
         if args.resume_optimizer:
@@ -89,6 +100,7 @@ def train(args):
             schedule.load_state_dict(d["schedule"])
     report = {
         "device": "cpu",
+        "architecture": args.architecture,
         "input_size": SIZE,
         "batch": args.batch,
         "train": len(training),
@@ -129,6 +141,7 @@ def train(args):
             map50 = detection_metrics(preds, truth)["map50"]
         checkpoint = {
             "version": 2,
+            "architecture": args.architecture,
             "model": net.state_dict(),
             "optimizer": opt.state_dict(),
             "schedule": schedule.state_dict(),
@@ -167,6 +180,7 @@ def evaluate(args):
         onnx_runtime = False
     preds = []
     gt = []
+    per_family = {}
     elapsed = []
     overlay_path = Path(args.out).with_suffix("")
     for index, r in enumerate(data.records):
@@ -176,6 +190,12 @@ def evaluate(args):
         elapsed.append((time.perf_counter() - started) * 1000)
         preds.extend((index, a) for a in doc["elements"])
         gt.extend((index, a) for a in r["annotations"])
+        domain = per_family.setdefault(
+            r["family"], {"predictions": [], "truth": [], "samples": 0}
+        )
+        domain["predictions"].extend((index, a) for a in doc["elements"])
+        domain["truth"].extend((index, a) for a in r["annotations"])
+        domain["samples"] += 1
         if index < args.overlays:
             overlay_path.mkdir(parents=True, exist_ok=True)
             draw_overlay(image, doc).save(overlay_path / f"{index:03d}.png")
@@ -188,6 +208,13 @@ def evaluate(args):
         "tiled": args.tile,
         "threshold": args.threshold,
         "metrics": metrics,
+        "by_family": {
+            name: {
+                "samples": records["samples"],
+                "metrics": detection_metrics(records["predictions"], records["truth"]),
+            }
+            for name, records in sorted(per_family.items())
+        },
         "latency_cpu_ms_median": round(float(np.median(elapsed)), 3),
         "latency_cpu_ms_p95": round(float(np.percentile(elapsed, 95)), 3),
         "peak_memory_mib": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 2),
@@ -197,7 +224,7 @@ def evaluate(args):
 
 
 def export(args):
-    net, _ = load_model(args.checkpoint)
+    net, checkpoint = load_model(args.checkpoint)
     path = Path(args.out)
     path.parent.mkdir(parents=True, exist_ok=True)
     x = torch.rand(1, 3, SIZE, SIZE)
@@ -218,7 +245,7 @@ def export(args):
     )
     obj = onnx.load(str(path))
     for name, value in {
-        "name": "Lxyra V2",
+        "name": "Lxyra " + checkpoint.get("architecture", "v2"),
         "weights": "random initialization, supervised from scratch",
         "classes": json.dumps(CATEGORIES),
         "input": "RGB 448x448; [0,1]; letterbox(127)",
@@ -277,6 +304,7 @@ def main():
     train_p.add_argument("--out", default="artifacts/v2")
     train_p.add_argument("--epochs", type=int, default=12)
     train_p.add_argument("--batch", type=int, default=5)
+    train_p.add_argument("--architecture", choices=("v2", "compact"), default="v2")
     train_p.add_argument("--lr", type=float, default=0.0008)
     train_p.add_argument("--seed", type=int, default=42)
     train_p.add_argument("--threads", type=int, default=4)
