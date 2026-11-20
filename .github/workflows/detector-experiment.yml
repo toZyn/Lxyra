@@ -1,6 +1,9 @@
 name: Detector architecture experiment
 
 on:
+  push:
+    branches: ["testing/coordinate-integrity"]
+    paths: [".github/workflows/detector-experiment.yml"]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +31,7 @@ jobs:
         run: python -m pytest -q tests/test_compact_model.py
       - name: Build publicly licensed cross-platform dataset subset
         run: |
-          python -m lxyra.training.hf_builder --root data/experiment --rico-pages 4 --web-pages 6 --design-pages 3 --page-size 24
+          python -m lxyra.training.hf_builder --root data/experiment --rico-pages 10 --web-pages 16 --design-pages 8 --page-size 24
           python - <<'PY'
           import json
           from collections import Counter
@@ -44,16 +47,22 @@ jobs:
           if not any(row["family"] == "web" for row in data):
               raise RuntimeError("Web screenshots are missing")
           PY
+      - name: Check dataset annotations and group separation
+        run: python scripts/audit_annotations.py --data-root data/experiment --output experiment/dataset_audit.json
       - name: Measure CPU runtime with randomly initialized models
         run: python scripts/benchmark_architectures.py --resolution 448 --threads 2 --output experiment/architecture_cpu.json
       - name: Train original model from scratch
-        run: python -m lxyra.training.detector_cli train --architecture v2 --data data/experiment --out experiment/v2 --epochs 3 --batch 4 --threads 2 --seed 2026
+        run: python -m lxyra.training.detector_cli train --architecture v2 --data data/experiment --out experiment/v2 --epochs 12 --batch 4 --threads 2 --seed 2026
       - name: Train compact model from scratch
-        run: python -m lxyra.training.detector_cli train --architecture compact --data data/experiment --out experiment/compact --epochs 3 --batch 4 --threads 2 --seed 2026
+        run: python -m lxyra.training.detector_cli train --architecture compact --data data/experiment --out experiment/compact --epochs 12 --batch 4 --threads 2 --seed 2026
       - name: Evaluate original model on held-out validation
         run: python -m lxyra.training.detector_cli evaluate --data data/experiment --split val --checkpoint experiment/v2/best.pt --out experiment/v2_metrics.json --threads 2 --overlays 0
       - name: Evaluate compact model on the same held-out validation
         run: python -m lxyra.training.detector_cli evaluate --data data/experiment --split val --checkpoint experiment/compact/best.pt --out experiment/compact_metrics.json --threads 2 --overlays 0
+      - name: Evaluate both models on unseen test domains
+        run: |
+          python -m lxyra.training.detector_cli evaluate --data data/experiment --split test --checkpoint experiment/v2/best.pt --out experiment/v2_test_metrics.json --threads 2 --overlays 0
+          python -m lxyra.training.detector_cli evaluate --data data/experiment --split test --checkpoint experiment/compact/best.pt --out experiment/compact_test_metrics.json --threads 2 --overlays 0
       - name: Export and verify trained ONNX models
         run: |
           python -m lxyra.training.detector_cli export --checkpoint experiment/v2/best.pt --out experiment/v2.onnx
